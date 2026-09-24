@@ -1,7 +1,10 @@
-from fastapi import FastAPI, Depends, Header, HTTPException
+from fastapi import FastAPI, Depends, Header, HTTPException, Request
 from dotenv import load_dotenv
 import os
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 
 load_dotenv()
@@ -18,6 +21,10 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 def verify_api_key(x_api_key : str = Header(...)):
     if x_api_key.strip() != API_KEY:
@@ -27,27 +34,31 @@ def verify_api_key(x_api_key : str = Header(...)):
 
 
 @app.get("/secure")
-def send_key(result = Depends(verify_api_key)):
+@limiter.limit("5/minute")
+def send_key(request: Request, result = Depends(verify_api_key)):
     return {"secure_data":"I like python"}
 
 
 
 @app.get("/")
-def read_root():
-    return {"message":"Hello from Snoox API"}
+def health():
+    return {"message":"Healthy"}
 
 @app.post("/stocks")
-def add_stock(stock: Stock):
+@limiter.limit("1/minute")
+def add_stock(request : Request, stock: Stock, response = Depends(verify_api_key)):
     database[stock.symbol] = stock
 
     return {"stock": f"Added {stock.name}"}
 
 @app.get("/stocks")
-def get_all_stocks():
+@limiter.limit("5/minute")
+def get_all_stocks(request : Request, response = Depends(verify_api_key)):
     return database
 
 @app.get("/stocks/{symbol}")
-def get_symbol_stock(symbol: str):
+@limiter.limit("5/minute")
+def get_symbol_stock(request : Request, symbol: str, response = Depends(verify_api_key)):
     if symbol in database:
         return database[symbol]
     else:
