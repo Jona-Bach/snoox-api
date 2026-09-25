@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+
 
 
 load_dotenv()
@@ -20,6 +23,10 @@ database : dict[str, Stock] = {}
 API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
+
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"),name="static")
+
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -63,3 +70,7 @@ def get_symbol_stock(request : Request, symbol: str, response = Depends(verify_a
         return database[symbol]
     else:
         raise HTTPException(404, "Symbol not found")
+
+@app.get("/login")
+def show_login(request : Request):
+    return templates.TemplateResponse(request=request,name="login.html", context={"title": "Snoox Login"})
